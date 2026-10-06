@@ -1,0 +1,35 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# IDE
+.vscode/
+.idea/
+
+# 大數據文件
+data/DEM/
+data/WorldPop/
+data/LUMHK_RasterGrid_2024/
+data/*.shp
+data/*.shx
+data/*.dbf
+data/*.prj
+data/*.cpg
+data/Drain_Gully_Grating_SHP/
+data/Manhole_Stormwater_SHP/
+data/Pipe_Stormwater_SHP/
+data/Multiple_Pipes_Stormwater/
+data/Land_area_mid_year_population_and_population__SHP/
+data/Predicted_tidal_information_Times_and_Heights_SHP/
+data/tc/
+data/elevation_grid.geojson
+data/risk_zones.geojson
+data/*.bak
+data/*.bak_*
+data/*.log
+data/WorldPop/*.tif
+
+# 系統
+.DS_Store
+Thumbs.db

@@ -1,0 +1,8 @@
+.\venv\Scripts\Activate.ps1 
+
+python -m http.server 8000
+# 瀏覽器打開 http://localhost:8000/risk_map.html
+
+python -c "import json; h=json.load(open('data/rainfall_history.json', encoding='utf-8')); print(f'{len(h)} 筆'); [print('  '+e['time']) for e in h]"
+
+https://github.com/littlegut-gut/hk-flood-map.git
