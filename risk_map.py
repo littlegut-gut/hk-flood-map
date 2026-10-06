@@ -1587,7 +1587,6 @@ if stations_dict:
         '      RAIN_HISTORY = data.slice(-24);'
         '      console.log("[rain] 歷史已更新: " + before + " → " + RAIN_HISTORY.length + " 筆");'
         '      renderHistory();'
-        '      _animInit();'                                    # ← 新增
         '      var t = new Date().toLocaleTimeString("zh-HK", {hour12:false});'
         '      var countEl = document.getElementById("rain-history-count");'
         '      if (countEl) countEl.textContent = "(" + RAIN_HISTORY.length + " 筆 · " + t + ")";'
