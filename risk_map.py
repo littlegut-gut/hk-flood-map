@@ -415,25 +415,10 @@ except Exception as e:
 
 
 # ============================================================
-# 6. 熱帶氣旋路徑（必須在繪圖之前定義 tc_tracks）
+# 6. 熱帶氣旋路徑（改為前端 fetch，Python 端不再讀取）
 # ============================================================
-print("🌀 載入熱帶氣旋路徑...")
-tc_dir = "data/tc"
-tc_tracks = []
-if os.path.isdir(tc_dir):
-    for fp in sorted(glob(os.path.join(tc_dir, "hko_tctrack_*.gml"))
-                   + glob(os.path.join(tc_dir, "hko_tctrack_*.xml"))):
-        track = load_tc_track_from_gml(fp)
-        if track and (track['past'] or track['analysis'] or track['forecast']):
-            tc_tracks.append(track)
-            print(f"  ✅ {track['name']}（{os.path.basename(fp)}）："
-                  f"過去 {len(track['past'])}｜當前 {len(track['analysis'])}｜"
-                  f"預報 {len(track['forecast'])}")
-        else:
-            print(f"  ⚠️ {os.path.basename(fp)}：解析為空")
-else:
-    print(f"  ℹ️ 找不到 {tc_dir} 目錄")
-
+tc_tracks = []   # 保留變量名供後續條件判斷用，但不加載任何數據
+print("🌀 熱帶氣旋路徑：已改為前端 fetch，跳過 Python 端加載")
 
 # ============================================================
 # 7. 建立地圖 + 底圖
@@ -1027,36 +1012,29 @@ if tc_tracks:
         tc_highlight.add_to(m)
     print(f"  ✅ 繪製 {len(tc_tracks)} 條路徑 + 影響區")
 
-
 # ============================================================
-# 10. 潮位面板（右上角）
+# 10. 潮位面板（右上角）—— 始终生成容器，供前端刷新
 # ============================================================
-if tide is not None and real_tide:
+if tide is not None:
+    # 构建初始面板内容（如有数据则显示，否则显示"载入中"）
     panel_rows = []
-    for _, row in tide.iterrows():
-        en_name = ''
-        for col in ['TideStatio', 'TideStation_en', 'TideStation']:
-            if col in row.index and pd.notna(row[col]):
-                en_name = str(row[col]).strip()
-                break
-        zh_name = TIDE_NAME_MAPPING.get(en_name, '')
-        height = real_tide.get(zh_name)
-        if height is None:
-            continue
-        surge = max(0.0, height - ASTRONOMICAL_HIGH_TIDE)
-        panel_rows.append((zh_name or en_name, height, surge))
+    if real_tide:
+        for _, row in tide.iterrows():
+            en_name = ''
+            for col in ['TideStatio', 'TideStation_en', 'TideStation']:
+                if col in row.index and pd.notna(row[col]):
+                    en_name = str(row[col]).strip()
+                    break
+            zh_name = TIDE_NAME_MAPPING.get(en_name, '')
+            height = real_tide.get(zh_name)
+            if height is None:
+                continue
+            surge = max(0.0, height - ASTRONOMICAL_HIGH_TIDE)
+            panel_rows.append((zh_name or en_name, height, surge))
 
+    # 初始表格内容
     if panel_rows:
         panel_rows.sort(key=lambda x: -x[1])
-        max_surge = max((s for _, _, s in panel_rows), default=0.0)
-
-        if max_surge >= 0.5:
-            header_bg, header_txt = '#cc0000', f'🌊 實時潮位 ⚠️ 增水 {max_surge:.2f}m'
-        elif max_surge > 0:
-            header_bg, header_txt = '#ff6600', f'🌊 實時潮位 ⚠️ 增水 {max_surge:.2f}m'
-        else:
-            header_bg, header_txt = '#003366', '🌊 實時潮位'
-
         rows_html = ""
         for name, h, s in panel_rows:
             if s >= 1.0:
@@ -1076,33 +1054,39 @@ if tide is not None and real_tide:
                 f"<td style='padding:2px 8px;text-align:right;font-size:11px;'>{surge_txt}</td>"
                 f"</tr>"
             )
-
         time_str = tide_time if tide_time else '--'
-        panel_html = (
-            '<div id="tide-panel" style="'
-            'position:absolute;top:12px;right:12px;z-index:9999;'
-            'background:rgba(255,255,255,0.96);border:1px solid #888;'
-            'border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,0.28);'
-            "font-family:'Segoe UI','Microsoft JhengHei',sans-serif;"
-            'font-size:12px;min-width:240px;max-width:300px;'
-            'overflow:hidden;backdrop-filter:blur(4px);">'
-            '<div style="background:' + header_bg + ';color:white;padding:7px 12px;'
-            'font-weight:600;font-size:13px;cursor:pointer;user-select:none;"'
-            ' onclick="var b=document.getElementById(\'tide-panel-body\');'
-            'if(b.style.display===\'none\')b.style.display=\'block\';'
-            'else b.style.display=\'none\';"'
-            '>' + header_txt + '</div>'
-            '<div id="tide-panel-body">'
-            '<div style="padding:3px 10px 2px;color:#666;font-size:10.5px;'
-            'text-align:right;border-bottom:1px solid #eee;">' + time_str + '</div>'
-            '<table style="width:100%;border-collapse:collapse;">'
-            '<thead><tr style="background:#eef3f8;color:#333;">'
-            '<th style="padding:3px 8px;text-align:left;font-size:11px;">站點</th>'
-            '<th style="padding:3px 8px;text-align:right;font-size:11px;">潮位</th>'
-            '<th style="padding:3px 8px;text-align:right;font-size:11px;">增水</th>'
-            '</tr></thead><tbody>' + rows_html + '</tbody></table></div></div>'
+        body_html = (
+            f'<div style="padding:3px 10px 2px;color:#666;font-size:10.5px;'
+            f'text-align:right;border-bottom:1px solid #eee;">{time_str}</div>'
+            f'<table style="width:100%;border-collapse:collapse;">'
+            f'<thead><tr style="background:#eef3f8;color:#333;">'
+            f'<th style="padding:3px 8px;text-align:left;font-size:11px;">站點</th>'
+            f'<th style="padding:3px 8px;text-align:right;font-size:11px;">潮位</th>'
+            f'<th style="padding:3px 8px;text-align:right;font-size:11px;">增水</th>'
+            f'</tr></thead><tbody>{rows_html}</tbody></table>'
         )
-        m.get_root().html.add_child(folium.Element(panel_html))
+    else:
+        body_html = '<div style="padding:8px;color:#999;text-align:center;">載入中…</div>'
+
+    # 始终生成面板（id="tide-panel-body" 供前端刷新）
+    panel_html = (
+        '<div id="tide-panel" style="'
+        'position:absolute;top:12px;right:12px;z-index:9999;'
+        'background:rgba(255,255,255,0.96);border:1px solid #888;'
+        'border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,0.28);'
+        "font-family:'Segoe UI','Microsoft JhengHei',sans-serif;"
+        'font-size:12px;min-width:240px;max-width:300px;'
+        'overflow:hidden;backdrop-filter:blur(4px);">'
+        '<div style="background:#003366;color:white;padding:7px 12px;'
+        'font-weight:600;font-size:13px;cursor:pointer;user-select:none;"'
+        ' onclick="var b=document.getElementById(\'tide-panel-body\');'
+        'if(b.style.display===\'none\')b.style.display=\'block\';'
+        'else b.style.display=\'none\';">'
+        '🌊 實時潮位</div>'
+        f'<div id="tide-panel-body">{body_html}</div>'
+        '</div>'
+    )
+    m.get_root().html.add_child(folium.Element(panel_html))
 
 
 # ============================================================
@@ -1596,6 +1580,162 @@ if stations_dict:
         '    });'
         '}'
 
+        # ---- TC 實時刷新 ----
+        'var _tcLayerGroup = null;'
+        'function refreshTC(){'
+        '  console.log("[tc] 開始刷新...");'
+        '  var tcListUrl = "https://www.weather.gov.hk/wxinfo/currwx/tc_list.xml?t=" + Date.now();'
+        '  fetch("https://hko-cors-proxy.littlegut-2c9.workers.dev/?target=" + encodeURIComponent(tcListUrl))'
+        '    .then(function(r){ return r.text(); })'
+        '    .then(function(xmlText){'
+        '      var parser = new DOMParser();'
+        '      var xmlDoc = parser.parseFromString(xmlText, "text/xml");'
+        '      var tcNodes = xmlDoc.getElementsByTagName("TropicalCyclone");'
+        '      if (tcNodes.length === 0) {'
+        '        console.log("[tc] 當前無活躍熱帶氣旋");'
+        '        if (_tcLayerGroup && mapObj) { mapObj.removeLayer(_tcLayerGroup); _tcLayerGroup = null; }'
+        '        return;'
+        '      }'
+        '      var tcURL = tcNodes[0].getElementsByTagName("TropicalCycloneURL")[0].textContent;'
+        '      tcURL = tcURL.replace("http://", "https://");'
+        '      console.log("[tc] 找到活躍台風，URL:", tcURL);'
+        '      var proxiedTrack = "https://hko-cors-proxy.littlegut-2c9.workers.dev/?target=" + encodeURIComponent(tcURL + "?t=" + Date.now());'
+        '      return fetch(proxiedTrack).then(function(r2){ return r2.text(); });'
+        '    })'
+        '    .then(function(trackXmlText){'
+        '      if (!trackXmlText) return;'
+        '      var parser = new DOMParser();'
+        '      var xmlDoc = parser.parseFromString(trackXmlText, "text/xml");'
+        '      var newLayer = _parseTCLayer(xmlDoc);'
+        '      if (!mapObj) { mapObj = _findMap(); }'
+        '      if (!mapObj) { console.warn("[tc] 找不到地圖"); return; }'
+        '      if (_tcLayerGroup) mapObj.removeLayer(_tcLayerGroup);'
+        '      _tcLayerGroup = newLayer;'
+        '      _tcLayerGroup.addTo(mapObj);'
+        '      console.log("[tc] 圖層已更新");'
+        '      if (!mapObj.getBounds().intersects(_tcLayerGroup.getBounds())) {'
+        '         toast("🌀 發現颱風「" + xmlDoc.getElementsByTagName("TropicalCycloneName")[0].textContent + "」，請向東拖動地圖查看", true);'
+        '      }'
+        '    })'
+        '    .catch(function(e){ console.warn("[tc] 刷新失敗:", e.message); });'
+        '}'
+
+        'function _parseTCLayer(xmlDoc){'
+        '  var layer = L.featureGroup();'
+        '  var mapObj = _findMap();'
+        '  '
+        '  function parseCoord(str){'
+        '    if(!str) return NaN;'
+        '    var val = parseFloat(str);'
+        '    if(str.indexOf("S") !== -1 || str.indexOf("W") !== -1) val = -val;'
+        '    return val;'
+        '  }'
+        '  '
+        '  function extractAll(tagName){'
+        '    var out = [];'
+        '    var nodes = xmlDoc.getElementsByTagName(tagName);'
+        '    for (var i = 0; i < nodes.length; i++) {'
+        '      var it = nodes[i];'
+        '      var latE = it.getElementsByTagName("Latitude")[0];'
+        '      var lonE = it.getElementsByTagName("Longitude")[0];'
+        '      if (!latE || !lonE) continue;'
+        '      var lat = parseCoord(latE.textContent);'
+        '      var lon = parseCoord(lonE.textContent);'
+        '      if (isNaN(lat) || isNaN(lon)) continue;'
+        '      var intE = it.getElementsByTagName("Intensity")[0];'
+        '      var windE = it.getElementsByTagName("MaximumWind")[0];'
+        '      var timeE = it.getElementsByTagName("Time")[0];'
+        '      out.push({'
+        '        lat: lat, lon: lon,'
+        '        intensity: intE ? intE.textContent : "",'
+        '        wind: windE ? windE.textContent : "",'
+        '        time: timeE ? timeE.textContent : ""'
+        '      });'
+        '    }'
+        '    return out;'
+        '  }'
+        '  '
+        '  var past = extractAll("PastInformation");'
+        '  var ana  = extractAll("AnalysisInformation");'
+        '  var fc   = extractAll("ForecastInformation");'
+        '  '
+        '  var line1 = past.map(function(p){return [p.lat, p.lon];}).concat(ana.map(function(p){return [p.lat, p.lon];}));'
+        '  if (line1.length >= 2) L.polyline(line1, {color: "#ff6600", weight: 4, opacity: 0.9}).addTo(layer);'
+        '  '
+        '  var line2 = ana.map(function(p){return [p.lat, p.lon];}).concat(fc.map(function(p){return [p.lat, p.lon];}));'
+        '  if (line2.length >= 2) L.polyline(line2, {color: "#ff6600", weight: 4, opacity: 0.8, dashArray: "12,8"}).addTo(layer);'
+        '  '
+
+        '  ana.forEach(function(p){'
+        '    L.circleMarker([p.lat, p.lon], {radius: 10, color: "#000", weight: 2.5, fill: true, fillColor: "#ff6600", fillOpacity: 1.0})'
+        '      .bindTooltip("<b>當前</b><br>" + (p.intensity||"") + "<br>" + (p.wind||"") + "<br>" + (p.time||""), {sticky: true}).addTo(layer);'
+        '  });'
+        '  '
+        
+        '  fc.forEach(function(p){'
+        '    if (p.time) {'
+        '      L.circleMarker([p.lat, p.lon], {radius: 5, color: "#ff6600", weight: 2, fill: true, fillColor: "#fff", fillOpacity: 0.9})'
+        '        .bindTooltip("<b>預測</b><br>" + (p.intensity||"") + "<br>" + (p.wind||"") + "<br>" + (p.time||""), {sticky: true}).addTo(layer);'
+        '    }'
+        '  });'
+        '  '
+
+        '  return layer;'
+        '}'
+
+        # ---- 潮汐實時刷新 ----
+        'function refreshTide(){'
+        '  console.log("[tide] 開始刷新...");'
+        '  const tideUrl = "https://data.weather.gov.hk/weatherAPI/hko_data/tide/ALL_tc.csv?t=" + Date.now();'
+        '  fetch("https://hko-cors-proxy.littlegut-2c9.workers.dev/?target=" + encodeURIComponent(tideUrl))'
+        '    .then(function(r){ return r.text(); })'
+        '    .then(function(csvText){'
+        '      if (csvText.charCodeAt(0) === 0xFEFF) csvText = csvText.slice(1);'
+        '      var lines = csvText.trim().split("\\n");'
+        '      var headers = lines[0].split(",").map(function(h){return h.trim();});'
+        '      var si = headers.indexOf("潮汐站");'
+        '      var hi = headers.indexOf("高度(米)");'
+        '      if (si === -1 || hi === -1) { console.warn("[tide] CSV 欄位不符"); return; }'
+        '      var data = {};'
+        '      for (var i = 1; i < lines.length; i++) {'
+        '        var cols = lines[i].split(",");'
+        '        if (cols[si] && cols[hi]) {'
+        '          var h = parseFloat(cols[hi]);'
+        '          if (!isNaN(h)) data[cols[si].trim()] = h;'
+        '        }'
+        '      }'
+        '      _renderTidePanel(data);'
+        '      console.log("[tide] 已更新 " + Object.keys(data).length + " 站");'
+        '    })'
+        '    .catch(function(e){ console.warn("[tide] 刷新失敗:", e.message); });'
+        '}'
+
+        'function _renderTidePanel(tideData){'
+        '  var body = document.getElementById("tide-panel-body");'
+        '  if (!body) { console.warn("[tide] tide-panel-body 不存在"); return; }'
+        '  var names = Object.keys(tideData).sort(function(a,b){return tideData[b]-tideData[a];});'
+        '  var rows = "";'
+        '  names.forEach(function(name){'
+        '    var h = tideData[name];'
+        '    var surge = Math.max(0, h - 2.0);'
+        '    var color = "#0099ff", tag = "";'
+        '    if (surge >= 1.0) { color = "#cc0000"; tag = "嚴重"; }'
+        '    else if (surge >= 0.5) { color = "#ff6600"; tag = "中等"; }'
+        '    else if (surge > 0) { color = "#ddaa00"; tag = "輕微"; }'
+        '    var surgeTxt = surge > 0 ? "<span style=\'color:" + color + ";\\\'>+" + surge.toFixed(2) + "m <small>" + tag + "</small></span>" : "";'
+        '    rows += "<tr><td style=\'padding:2px 8px;\'>" + name + "</td>"'
+        '         +  "<td style=\'padding:2px 8px;text-align:right;color:" + color + ";font-weight:600;\'>" + h.toFixed(2) + "m</td>"'
+        '         +  "<td style=\'padding:2px 8px;text-align:right;font-size:11px;\'>" + surgeTxt + "</td></tr>";'
+        '  });'
+        '  var timeStr = new Date().toLocaleTimeString("zh-HK", {hour12: false});'
+        '  body.innerHTML = "<div style=\'padding:3px 10px 2px;color:#666;font-size:10.5px;text-align:right;border-bottom:1px solid #eee;\'>" + timeStr + "</div>"'
+        '    + "<table style=\'width:100%;border-collapse:collapse;\'><thead><tr style=\'background:#eef3f8;color:#333;\'>"'
+        '    + "<th style=\'padding:3px 8px;text-align:left;font-size:11px;\'>站點</th>"'
+        '    + "<th style=\'padding:3px 8px;text-align:right;font-size:11px;\'>潮位</th>"'
+        '    + "<th style=\'padding:3px 8px;text-align:right;font-size:11px;\'>增水</th>"'
+        '    + "</tr></thead><tbody>" + rows + "</tbody></table>";'
+        '}'
+
         # ---- 手動刷新（掛 window 給 onclick 用）----
         'window.refreshHistoryManual = function(){'
         '  console.log("[rain] 手動刷新");'
@@ -1903,6 +2043,15 @@ if stations_dict:
         'try { renderHistory(); } catch(e) { console.error("[rain] 初始渲染失敗:", e); }'
         'setTimeout(refreshHistory, 1000);'                # 1 秒後首次
         'setInterval(refreshHistory, 5*60*1000);'          # 之後每 5 分鐘
+        
+        # ---- TC 實時更新 ----
+        'setTimeout(refreshTC, 2000);'
+        'setInterval(refreshTC, 30*60*1000);'
+
+        # ---- 潮汐實時更新 ----
+        'setTimeout(refreshTide, 3000);'
+        'setInterval(refreshTide, 10*60*1000);'
+        
         '_boot();'
         '})();'
         '</script>'
