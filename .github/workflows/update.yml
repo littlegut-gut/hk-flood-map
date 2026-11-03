@@ -17,8 +17,20 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install -r requirements.txt
-      - run: python accumulate_rainfall.py
-      - run: cp data/rainfall_history.json docs/data/rainfall_history.json
+
+      - name: Restore history from docs
+        run: |
+          mkdir -p data
+          if [ -f docs/data/rainfall_history.json ]; then
+            cp docs/data/rainfall_history.json data/rainfall_history.json
+          fi
+
+      - name: Accumulate rainfall
+        run: python accumulate_rainfall.py
+
+      - name: Copy to docs
+        run: cp data/rainfall_history.json docs/data/rainfall_history.json
+
       - name: Commit & push
         run: |
           git config user.name "github-actions[bot]"
